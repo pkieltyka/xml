@@ -5,6 +5,7 @@
 package xml
 
 import (
+	"fmt"
 	"io"
 	"reflect"
 	"strings"
@@ -710,5 +711,109 @@ func TestUnmarshalIntoInterface(t *testing.T) {
 	have, want := pea.Cotelydon, "Green stuff"
 	if have != want {
 		t.Errorf("failed to unmarshal into interface, have %q want %q", have, want)
+	}
+}
+
+// Basic RSS feed parsing tests
+
+const rssFeedString = `
+<?xml encoding="utf-8"?>
+<rss version="2.0"
+		 xmlns:dc="http://purl.org/dc/elements/1.1/"
+		 xmlns:content="http://purl.org/rss/1.0/modules/content/">
+
+  <channel>
+	  <title>The Go Programming Language Blog</title>
+		<link>https://blog.golang.org/</link>
+
+		<item>
+		  <title>Go GC: Prioritizing low latency and simplicity</title>
+			<link>http://blog.golang.org/go15gc</link>
+			<pubDate>Mon, 31 Aug 2015 00:00:00 +0000</pubDate>
+			<dc:creator>Richard Hudson</dc:creator>
+			<description><![CDATA[Go is building a garbage collector...]]></description>
+			<content:encoded><![CDATA[Go is building a garbage collector, a concurrent one.]]></content:encoded>
+		</item>
+
+		<item>
+		  <title>GopherCon 2015 Roundup</title>
+			<link>http://blog.golang.org/gophercon2015</link>
+			<pubDate>Tue, 28 Jul 2015 00:00:00 +0000</pubDate>
+			<dc:creator>Andrew Gerrand</dc:creator>
+			<description><![CDATA[GopherCon 2015 was a huge hit!]]></description>
+			<content:encoded><![CDATA[You heard it here first, Go is amazing.]]></content:encoded>
+		</item>
+
+	</channel>
+</rss>      `
+
+// This is a partial RSS2 parser, however a complete parser can be constructed
+// based on this structure.
+type Rss struct {
+	XMLName Name       `xml:"rss"`
+	Version string     `xml:"version,attr"`
+	Channel RssChannel `xml:"channel"`
+}
+
+type RssChannel struct {
+	Title       string    `xml:"title"`
+	Link        string    `xml:"link"`
+	Description string    `xml:"description"`
+	PubDate     string    `xml:"pubDate"`
+	Items       []RssItem `xml:"item"`
+}
+
+type RssItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	Author      string `xml:"author"`
+	PubDate     string `xml:"pubDate"`
+
+	// RSS modules by namespace
+	RssContent
+	RssDublinCore
+}
+
+type RssContent struct {
+	Encoded string `xml:"content encoded"`
+}
+
+type RssDublinCore struct {
+	Creator string `xml:"http://purl.org/dc/elements/1.1/ creator"`
+}
+
+func TestRssUnmarshaler(t *testing.T) {
+	var m Rss
+	if err := Unmarshal([]byte(rssFeedString), &m); err != nil {
+		t.Fatal(err)
+	}
+
+	if m.Channel.Title == "" {
+		t.Fatal("Expecting RSS channel to contain a title.")
+	}
+
+	if len(m.Channel.Items) != 2 {
+		t.Fatal("Expecting 2 items in the RSS feed.")
+	}
+
+	item1 := m.Channel.Items[0]
+
+	if item1.Title == "" {
+		t.Fatal("Expecting RSS item 1 to contain a title.")
+	}
+
+	if item1.Link != "http://blog.golang.org/go15gc" {
+		t.Fatal("Expecting RSS item 1 to match the specific blog url.")
+	}
+
+	expectStr := "Richard Hudson"
+	if item1.Creator != expectStr {
+		t.Fatal(fmt.Sprintf("Expecting RSS item 1 dc:creator to match '%s', but found: '%s'", expectStr, item1.Creator))
+	}
+
+	expectStr = "Go is building a garbage collector, a concurrent one."
+	if item1.RssContent.Encoded != expectStr {
+		t.Fatal(fmt.Sprintf("Expecting RSS item 1 content:encoded to match '%s', but found: '%s'", expectStr, item1.RssContent.Encoded))
 	}
 }

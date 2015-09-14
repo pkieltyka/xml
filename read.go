@@ -614,7 +614,10 @@ func (p *Decoder) unmarshalPath(tinfo *typeInfo, sv reflect.Value, parents []str
 Loop:
 	for i := range tinfo.fields {
 		finfo := &tinfo.fields[i]
-		if finfo.flags&fElement == 0 || len(finfo.parents) < len(parents) || finfo.xmlns != "" && finfo.xmlns != start.Name.Space {
+		if finfo.flags&fElement == 0 || len(finfo.parents) < len(parents) {
+			continue
+		}
+		if _, ok := p.ns[finfo.xmlns]; finfo.xmlns != "" && finfo.xmlns != start.Name.Space && !ok {
 			continue
 		}
 		for j := range parents {
